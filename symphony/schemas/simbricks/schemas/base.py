@@ -219,29 +219,11 @@ class RunnerEventAction(str, enum.Enum):
     START_RUN = "start_run"
 
 
-class ApiRunnerEvent(BaseModel):
-    id: int | None = None
-    action: RunnerEventAction | None = None
-    run_id: int | None = None
-    runner_id: int
-    event_status: ApiEventStatus | None = None
-
-
-ApiRunnerEventList_A = TypeAdapter(list[ApiRunnerEvent])
-
-
-class UpdateApiRunnerEvent(BaseModel):
-    id: int
-    action: RunnerEventAction | None = None
-    run_id: int | None = None
-    runner_id: int | None = None
-    event_status: ApiEventStatus | None = None
-
-
+# TODO: Remove
 class ApiRunnerEventQuery(BaseModel):
-    action: ApiEventStatus | None = None
+    action: None = None
     run_id: int | None = None
-    event_status: ApiEventStatus | None = None
+    event_status: None = None
     runner_id: int | None = None
     limit: int | None = None
 
@@ -352,518 +334,84 @@ class ApiOrgGuestMagicLinkResp(BaseModel):
 Schema objects used in SimBricks 'Generic Event Handling Interface':
 """  ############################################################################
 
-
-class ApiEventStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    COMPLETED = "COMPLETED"
-    CANCELLED = "CANCELLED"
-    ERROR = "ERROR"
+EVENT_REGISTRY: dict[str, Type[BaseModel]] = {}
 
 
-class AbstractApiEvent(BaseModel, abc.ABC):
-    id: int
+class Event(BaseModel, abc.ABC):
+    event_discriminator: str = Field(init=False)
+    """
+    The event event_discriminator, is be used to reconstruct pydantic model.
+    See pydantics discriminated union.
+    """
+    id: int | None
     """
     Generic identifier for an event. Subclasses should OVEWRITE this explicitly IN CASE the id is OPTIONAL.
     """
-    event_discriminator: Literal["AbstractApiEvent"] = "AbstractApiEvent"
+    runner_id: int
     """
-    The event event_discriminator, is be used to reconstruct pydantic model.
-    Must be OVERWRITTEN as Literal IN SUBCLASSES (see the helper classes below).
+    Generic identifier for an event. Subclasses should OVEWRITE this explicitly IN CASE the id is OPTIONAL.
     """
-    event_status: ApiEventStatus = ApiEventStatus.PENDING
+    acknowledged: bool = False
     """
     The status of this specific event.
     """
-    event_metadata_json: dict | str | bytes | None = (
-        None  # TODO: probably should make this a field with limited size
-    )
-    """
-    Optional event metadata that can be stored in this blob which is 
-    'independent' of the schema.
-    """
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        event_discriminator = cls.__name__
+
+        cls.model_fields["event_discriminator"].annotation = Literal[event_discriminator]
+        cls.model_fields["event_discriminator"].default = event_discriminator
+
+        assert event_discriminator not in EVENT_REGISTRY
+        EVENT_REGISTRY[event_discriminator] = cls
 
 
-class ApiCreateEvent(AbstractApiEvent):
-    id: None = None
+class Ack(Event):
+    to_ack_id: int
 
 
-class ApiReadEvent(AbstractApiEvent):
+class RunnerHeartbeat(Event):
     pass
 
 
-class ApiUpdateEvent(AbstractApiEvent):
-    pass
-
-
-class ApiDeleteEvent(AbstractApiEvent):
-    pass
-
-
-class AbstractApiEventQuery(BaseModel, abc.ABC):
-    event_discriminator: Literal["AbstractApiEventQuery"] = "AbstractApiEventQuery"
-    """
-    The event event_discriminator, is be used to reconstruct pydantic model. 
-    Must be OVERWRITTEN as Literal IN SUBCLASSES (see belows additional helper classes).
-    """
-    limit: int | None = None
-    """
-    Limit the results size.
-    """
-    ids: list[int] | None = None
-    """
-    Allows to query for specific event ids.
-    """
-    event_status: list[ApiEventStatus] | None = None
-    """
-    Allows to query for events with specific status.
-    """
-
-
-""" ############################################################################
-Runner related events
-"""  ############################################################################
-
-
-class RunnerEventType(str, enum.Enum):
-    heartbeat = "heartbeat"
-
-
-class AbstractApiRunnerEvent(AbstractApiEvent):
-    runner_id: int
-    """
-    the runner the event is associated with
-    """
-    runner_event_type: RunnerEventType = RunnerEventType.heartbeat
-    """
-    The kind of runner specific event this is (e.g. heartbeat).  
-    """
-
-
-class ApiRunnerEventCreate(ApiCreateEvent, AbstractApiRunnerEvent):
-    event_discriminator: Literal["ApiRunnerEventCreate"] = "ApiRunnerEventCreate"
-
-
-class ApiRunnerEventRead(ApiReadEvent, AbstractApiRunnerEvent):
-    event_discriminator: Literal["ApiRunnerEventRead"] = "ApiRunnerEventRead"
-
-
-class ApiRunnerEventUpdate(ApiUpdateEvent, AbstractApiRunnerEvent):
-    event_discriminator: Literal["ApiRunnerEventUpdate"] = "ApiRunnerEventUpdate"
-    runner_event_type: RunnerEventType | None = None
-
-
-class ApiRunnerEventDelete(ApiDeleteEvent):
-    event_discriminator: Literal["ApiRunnerEventDelete"] = "ApiRunnerEventDelete"
-
-
-class ApiRunnerEventQuery(AbstractApiEventQuery):
-    event_discriminator: Literal["ApiRunnerEventQuery"] = "ApiRunnerEventQuery"
-    runner_ids: list[int] | None = None
-    runner_event_type: list[RunnerEventType] | None = None
-
-
-class AbstractApiOutputEvent:
-    output_generated_at: datetime.datetime
-    """
-    An indicator when the output was generated.
-    """
-    output: str
-    """
-    The actual output from the simulator process.
-    """
-    is_stderr: bool
-    """
-    Whether the output is from stdout or from stderr.
-    """
-
-    @field_serializer("output_generated_at")
-    def serialize_output_generated_at(self, dt: datetime.datetime, _info) -> str:
-        return dt.isoformat()
-
-
-""" ############################################################################
-Run related events
-"""  ############################################################################
-
-
-class RunEventType(str, enum.Enum):
-    KILL = "KILL"
-    SIMULATION_STATUS = "SIMULATION_STATUS"
-    START_RUN = "START_RUN"
-
-
-class AbstractApiRunEvent(AbstractApiEvent):
-    runner_id: int  # TODO: considering fragments etc. we may want to remove this again
-    """
-    The runner the run is associated with.
-    """
-    run_id: int
-    """
-    The run associated with.
-    """
-    run_event_type: RunEventType
-    """
-    The kind of runner specific event this is (e.g. KILL).  
-    """
-
-
-class ApiRunEventCreate(ApiCreateEvent, AbstractApiRunEvent):
-    event_discriminator: Literal["ApiRunEventCreate"] = "ApiRunEventCreate"
-
-
-class ApiRunEventRead(ApiReadEvent, AbstractApiRunEvent):
-    event_discriminator: Literal["ApiRunEventRead"] = "ApiRunEventRead"
-
-
-class ApiRunEventStartRunRead(ApiRunEventRead):
-    run_event_type: RunEventType = RunEventType.START_RUN
-    event_discriminator: Literal["ApiRunEventStartRunRead"] = "ApiRunEventStartRunRead"
-
-    fragments: list[ApiRunFragment]
-    """
-    A list of fragments that should be executed by the runner.
-    """
-    inst: ApiInstantiation
-    """
-    The instantiation for this run. Fragments are set to None, since we already have a list of the
-    relevant run fragments, which contain the necessary fragments, in this event.
-    """
-    system: ApiSystem
-    """
-    The system for this run.
-    """
-    simulation: ApiSimulation
-    """
-    The simulation for this run.
-    """
-
-    inst_input_artifact: str | None = None
-    fragment_input_artifact: str | None = None
-
-
-class ApiRunEventUpdate(ApiUpdateEvent, AbstractApiRunEvent):
-    event_discriminator: Literal["ApiRunEventUpdate"] = "ApiRunEventUpdate"
-    run_event_type: RunEventType | None = None
-
-
-class ApiRunEventDelete(ApiDeleteEvent):
-    event_discriminator: Literal["ApiRunEventDelete"] = "ApiRunEventDelete"
-
-
-class ApiRunEventQuery(AbstractApiEventQuery):
-    event_discriminator: Literal["ApiRunEventQuery"] = "ApiRunEventQuery"
-    runner_ids: list[int] | None = None
-    run_ids: list[int] | None = None
-    run_event_type: list[RunEventType] | None = None
-
-
-class ApiRunEventStartRunQuery(AbstractApiEventQuery):
-    event_discriminator: Literal["ApiRunEventStartRunQuery"] = "ApiRunEventStartRunQuery"
-    runner_ids: list[int] | None = None
-    run_ids: list[int] | None = None
-    run_event_type: RunEventType = RunEventType.START_RUN
-
-
-""" ############################################################################
-Run fragment related events
-"""  ############################################################################
-
-
-class AbstractApiRunFragmentEvent(AbstractApiEvent):
-    run_id: int
-    """
-    The associated run.
-    """
-    run_fragment_id: int
-    """
-    The associated fragment.
-    """
-
-
-class AbstractApiRunFragmentStateEvent(AbstractApiRunFragmentEvent):
-    run_state: RunState
-    """
-    The state of the run for this fragment.
-    """
-
-
-class ApiRunFragmentStateEventCreate(ApiCreateEvent, AbstractApiRunFragmentStateEvent):
-    event_discriminator: Literal["ApiRunFragmentStateEventCreate"] = (
-        "ApiRunFragmentStateEventCreate"
-    )
-
-
-class AbstractApiRunFragmentOutputArtifactEvent(AbstractApiRunFragmentEvent):
-    output_artifact: str
-    output_artifact_name: str
-    """
-    The output artifact of the run for this fragment.
-    """
-
-
-class ApiRunFragmentOutputArtifactEventCreate(
-    ApiCreateEvent, AbstractApiRunFragmentOutputArtifactEvent
-):
-    event_discriminator: Literal["ApiRunFragmentOutputArtifactEventCreate"] = (
-        "ApiRunFragmentOutputArtifactEventCreate"
-    )
-
-
-""" ############################################################################
-Simulator related events
-"""  ############################################################################
-
-
-class AbstractApiSimulatorEvent(AbstractApiEvent):
-    run_id: int
-    """
-    The run a fragment is associated with.
-    """
-    simulator_id: int
-    """
-    The simulator id from the experiment definition the event is associated with.
-    """
-
-
-class AbstractApiSimulatorStateChangeEvent(AbstractApiSimulatorEvent):
-    simulator_state: RunComponentState
-    """
-    The current state of the simulator.
-    """
-    simulator_name: str | None = None
-    """
-    The name of the simulator.
-    """
-    command: str | None = None
-    """
-    The command associated with the state change.
-    """
-
-
-class ApiSimulatorStateChangeEventCreate(ApiCreateEvent, AbstractApiSimulatorStateChangeEvent):
-    event_discriminator: Literal["ApiSimulatorStateChangeEventCreate"] = (
-        "ApiSimulatorStateChangeEventCreate"
-    )
-
-
-class ApiSimulatorStateChangeEventRead(ApiReadEvent, AbstractApiSimulatorStateChangeEvent):
-    event_discriminator: Literal["ApiSimulatorStateChangeEventRead"] = (
-        "ApiSimulatorStateChangeEventRead"
-    )
-
-
-class ApiSimulatorStateChangeEventQuery(AbstractApiEventQuery):
-    event_discriminator: Literal["ApiSimulatorStateChangeEventQuery"] = (
-        "ApiSimulatorStateChangeEventQuery"
-    )
-    run_ids: list[int] | None = None
-    simulator_ids: list[int] | None = None
-    simulator_names: list[str] | None = None
-    simulator_states: list[RunComponentState] | None = None
-
-
-class ApiSimulatorOutputEventCreate(
-    ApiCreateEvent, AbstractApiSimulatorEvent, AbstractApiOutputEvent
-):
-    event_discriminator: Literal["ApiSimulatorOutputEventCreate"] = "ApiSimulatorOutputEventCreate"
-
-
-class ApiSimulatorOutputEventRead(ApiReadEvent, AbstractApiSimulatorEvent, AbstractApiOutputEvent):
-    event_discriminator: Literal["ApiSimulatorOutputEventRead"] = "ApiSimulatorOutputEventRead"
-    run_id: int | None = None
-    simulator_id: int | None = None
-
-
-class ApiSimulatorOutputEventDelete(ApiDeleteEvent):
-    event_discriminator: Literal["ApiSimulatorOutputEventDelete"] = "ApiSimulatorOutputEventDelete"
+class RunnerStateChange(Event):
+    old_status: RunnerStatus = RunnerStatus.HEALTHY
+    new_status: RunnerStatus = RunnerStatus.HEALTHY
 
 
 """
-Proxy related events
+Utils useful for validation, parsing etc. 
 """
 
 
-class AbstractApiProxyEvent(AbstractApiEvent):
-    run_id: int
-    """
-    The run a fragment is associated with.
-    """
-    proxy_id: int
-    """
-    the proxy id the event is associated with. Note that this is the python objects id and not those
-    of the database table. For details see 'IdObj'.
-    """
+def parse_event(event: dict) -> Event:
+    disc = event.get("event_discriminator", None)
+    if not disc:
+        raise ValueError(f"{event} does not have key 'event_discriminator'")
+    event_cls = EVENT_REGISTRY.get(disc, None)
+    if not event_cls:
+        raise ValueError(f"unkonw event class {event_cls}")
+    return event_cls.model_validate(event)
 
 
-class AbstractApiProxyStateChangeEvent(AbstractApiProxyEvent):
-    proxy_name: str
-    """The name of the proxy."""
-    proxy_state: RunComponentState
-    """
-    The current state of the proxy.
-    """
-    proxy_ip: str
-    """The IP the proxy is listening on / connecting to."""
-    proxy_port: int
-    """The port the proxy is listening on / connecting to."""
-    command: str | None = None
-    """
-    The command associated with the state change.
-    """
+def parse_events(events: list[dict]) -> list[Event]:
+    res = []
+    for event in events:
+        res.append(parse_event(event))
+    return res
 
 
-class ApiProxyStateChangeEventCreate(ApiCreateEvent, AbstractApiProxyStateChangeEvent):
-    event_discriminator: Literal["ApiProxyStateChangeEventCreate"] = (
-        "ApiProxyStateChangeEventCreate"
-    )
+def dump_events(events: list[Event]) -> list[dict[str, any]]:
+    return [m.model_dump() for m in events]
 
-
-class ApiProxyStateChangeEventRead(ApiReadEvent, AbstractApiProxyStateChangeEvent):
-    event_discriminator: Literal["ApiProxyStateChangeEventRead"] = "ApiProxyStateChangeEventRead"
-
-
-class ApiProxyStateChangeEventQuery(AbstractApiEventQuery):
-    event_discriminator: Literal["ApiProxyStateChangeEventQuery"] = "ApiProxyStateChangeEventQuery"
-    run_ids: list[int] | None = None
-    proxy_ids: list[int] | None = None
-    proxy_names: list[str] | None = None
-    proy_states: list[RunComponentState] | None = None
-    proxy_ips: list[str] | None = None
-    proxy_ports: list[int] | None = None
-
-
-class ApiProxyOutputEventCreate(ApiCreateEvent, AbstractApiProxyEvent, AbstractApiOutputEvent):
-    event_discriminator: Literal["ApiProxyOutputEventCreate"] = "ApiProxyOutputEventCreate"
-
-
-class ApiProxyOutputEventRead(ApiReadEvent, AbstractApiProxyEvent, AbstractApiOutputEvent):
-    event_discriminator: Literal["ApiProxyOutputEventRead"] = "ApiProxyOutputEventRead"
-    run_id: int | None = None
-    proxy_id: int | None = None
-
-
-class ApiProxyOutputEventDelete(ApiDeleteEvent):
-    event_discriminator: Literal["ApiProxyOutputEventDelete"] = "ApiProxyOutputEventDelete"
-
-
-"""
-ApiEventBundle definitions.
-"""
-
-
-class ApiEventType(enum.Enum):
-    ApiEventCreate = "ApiEventCreate"
-    ApiEventRead = "ApiEventRead"
-    ApiEventUpdate = "ApiEventUpdate"
-    ApiEventDelete = "ApiEventDelete"
-    ApiEventQuery = "ApiEventQuery"
-
-    def get_type(self):
-        match self:
-            case ApiEventType.ApiEventCreate:
-                return ApiEventCreate_U
-            case ApiEventType.ApiEventRead:
-                return ApiEventRead_U
-            case ApiEventType.ApiEventUpdate:
-                return ApiEventUpdate_U
-            case ApiEventType.ApiEventDelete:
-                return ApiEventDelete_U
-            case ApiEventType.ApiEventQuery:
-                return ApiEventQuery_U
-
-
-ApiEventCreate_U = Annotated[
-    ApiRunnerEventCreate
-    | ApiRunEventCreate
-    | ApiSimulatorOutputEventCreate
-    | ApiSimulatorStateChangeEventCreate
-    | ApiProxyStateChangeEventCreate
-    | ApiProxyOutputEventCreate
-    | ApiRunFragmentStateEventCreate
-    | ApiRunFragmentOutputArtifactEventCreate,
-    Field(discriminator="event_discriminator"),
-]
-
-ApiEventRead_U = Annotated[
-    ApiRunnerEventRead
-    | ApiRunEventRead
-    | ApiRunEventStartRunRead
-    | ApiSimulatorOutputEventRead
-    | ApiSimulatorStateChangeEventRead
-    | ApiProxyStateChangeEventRead
-    | ApiProxyOutputEventRead,
-    Field(discriminator="event_discriminator"),
-]
-
-ApiEventUpdate_U = Annotated[
-    ApiRunnerEventUpdate | ApiRunEventUpdate,
-    Field(discriminator="event_discriminator"),
-]
-
-ApiEventDelete_U = Annotated[
-    ApiRunnerEventDelete | ApiRunEventDelete | ApiSimulatorOutputEventDelete,
-    Field(discriminator="event_discriminator"),
-]
-
-ApiEventQuery_U = Annotated[
-    ApiRunnerEventQuery
-    | ApiRunEventQuery
-    | ApiRunEventStartRunQuery
-    | ApiSimulatorStateChangeEventQuery
-    | ApiProxyStateChangeEventQuery,
-    Field(discriminator="event_discriminator"),
-]
-
-BundleEventUnion_T = TypeVar(
-    "BundleEventUnion_T",
-    bound=ApiEventCreate_U | ApiEventRead_U | ApiEventUpdate_U | ApiEventDelete_U | ApiEventQuery_U,
-)
-
-
-class ApiEventBundle(BaseModel, Generic[BundleEventUnion_T]):
-    events: dict[str, list[BundleEventUnion_T]] = {}
-    """
-    This bundle is supposed to bundle events. Bundling means that in instances of this class a mapping 
-    is stored in the following form: 'event_discriminator' -> list[Event]. For this reason, all events 
-    that shall be used with this bundle must overwrite the 'event_discriminator' literal and set it 
-    to a unique value. Having this mapping allows to not only bundle events of the same type, but to 
-    bundle events of multiple types. 
-    
-    This allows to 1) bundle multiple events of the same type to send e.g. multiple 'ApiSimulatorOutputEventCreate'
-    with one request to the backend. Besides, it allows to send multiple such bundles of different types 
-    to the backend, meaning that a 'ApiSimulatorOutputEventCreate' as well as 'ApiRunEventCreate' and 
-    a 'ApiRunnerEventCreate' bundle can each be send to the backend within a single request.
-
-    NOTE: Event thought this bundling allows to store bundles of different events, it shall always be 
-    used only with the types defined in one of the CRUD unions defined above at a time. That means
-    'update' events SHALL NOT be bundled together with cerate or delete events (even though this would 
-    be possible). The reason is that we want to keep a distinction between such CRUD operations in our
-    API, thus we advise not to bundle events in that way (this will also not be supported by our backend
-    API).
-    """
-
-    def empty(self) -> bool:
-        return len(self.events) == 0
-
-    def add_event(self, event: BundleEventUnion_T) -> None:
-        if event.event_discriminator not in self.events:
-            self.events[event.event_discriminator] = []
-        self.events[event.event_discriminator].append(event)
-
-    def add_events(self, *args: BundleEventUnion_T):
-        for event in args:
-            self.add_event(event)
-
-
-"""
-Type Adapters useful for validation etc. 
-"""
 
 Model_Class_T = TypeVar("Model_Class_T")
 
 
 def validate_list_type(
-    model_list: list[BundleEventUnion_T], model_class: Type[Model_Class_T]
+    model_list: list[Event], model_class: Type[Model_Class_T]
 ) -> list[Model_Class_T]:
     adapter = TypeAdapter(list[Model_Class_T])
     validated_model_list = adapter.validate_python(model_list)
@@ -897,34 +445,17 @@ def convert_validate_factory(
     return converted
 
 
-"""
-The following type adapters are deprecated. Use aboves 'generic' methods instead.
-"""
+# import json
 
-ApiRunnerEventCreate_List_A = TypeAdapter(list[ApiRunnerEventCreate])
-ApiRunEventCreate_List_A = TypeAdapter(list[ApiRunEventCreate])
-ApiSimulatorOutputEventCreate_List_A = TypeAdapter(list[ApiSimulatorOutputEventCreate])
-ApiSimulatorStateChangeEventCreate_List_A = TypeAdapter(list[ApiSimulatorStateChangeEventCreate])
-ApiProxyOutputEventCreate_List_A = TypeAdapter(list[ApiProxyOutputEventCreate])
-ApiProxyStateChangeEventCreate_List_A = TypeAdapter(list[ApiProxyStateChangeEventCreate])
+# events = [
+#     RunnerStateChange(id=None, runner_id=234),
+#     RunnerHeartbeat(id=23, runner_id=234),
+#     Ack(id=256, runner_id=2234, to_ack_id=1753),
+# ]
 
-EventRead_A = TypeAdapter(ApiEventRead_U)
-ApiRunnerEventRead_List_A = TypeAdapter(list[ApiRunnerEventRead])
-ApiRunEventRead_List_A = TypeAdapter(list[ApiRunEventRead])
-ApiSimulatorOutputEventRead_List_A = TypeAdapter(list[ApiSimulatorOutputEventRead])
-ApiSimulatorStateChangeEventRead_List_A = TypeAdapter(list[ApiSimulatorStateChangeEventRead])
-ApiProxyOutputEventRead_List_A = TypeAdapter(list[ApiProxyOutputEventRead])
-ApiProxyStateChangeEventRead_List_A = TypeAdapter(list[ApiProxyStateChangeEventRead])
+# dumped = json.dumps(dump_events(events))
 
-EventUpdate_A = TypeAdapter(ApiEventUpdate_U)
-ApiRunnerEventUpdate_List_A = TypeAdapter(list[ApiRunnerEventUpdate])
-ApiRunEventUpdate_List_A = TypeAdapter(list[ApiRunEventUpdate])
+# loaded = json.loads(dumped)
 
-EventDelete_A = TypeAdapter(ApiEventDelete_U)
-ApiRunnerEventDelete_List_A = TypeAdapter(list[ApiRunnerEventDelete])
-ApiRunEventDelete_List_A = TypeAdapter(list[ApiRunEventDelete])
-ApiSimulatorOutputEventDelete_List_A = TypeAdapter(list[ApiSimulatorOutputEventDelete])
-ApiProxyOutputEventDelete_List_A = TypeAdapter(list[ApiProxyOutputEventDelete])
-
-ApiRunnerEventQuery_List_A = TypeAdapter(list[ApiRunnerEventQuery])
-ApiRunEventQuery_List_A = TypeAdapter(list[ApiRunEventQuery])
+# events = parse_events(loaded)
+# print(events)
