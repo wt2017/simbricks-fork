@@ -215,6 +215,7 @@ class MainRunner:
     async def _send_events_aggregate_updates(
         self, run_id: int, event, event_type: str, update
     ) -> None:
+        # TODO: FIXME
         run = self._run_map[run_id]
 
         # add handlers for update events from fragment runners
@@ -364,6 +365,7 @@ class MainRunner:
         events: list[schemas.ApiRunEventRead],
         updates: schemas.ApiEventBundle[schemas.ApiEventUpdate_U],
     ) -> None:
+        # TODO: FIXME
         events = schemas.validate_list_type(events, schemas.ApiRunEventRead)
         for event in events:
             update = schemas.ApiRunEventUpdate(
@@ -422,6 +424,7 @@ class MainRunner:
         events: list[schemas.ApiRunnerEventRead],
         updates: schemas.ApiEventBundle[schemas.ApiEventUpdate_U],
     ) -> None:
+        # TODO: FIXME
         events = schemas.ApiRunnerEventRead_List_A.validate_python(events)
         for event in events:
             update = schemas.ApiRunnerEventUpdate(id=event.id, runner_id=self._ident)
@@ -435,6 +438,7 @@ class MainRunner:
             LOGGER.info(f"handled runner related event {event.id}")
 
     async def _handel_events(self) -> None:
+        # TODO: FIXME
         while True:
             # fetch all events not handled yet
             event_query_bundle = schemas.ApiEventBundle[schemas.ApiEventQuery_U]()
@@ -504,6 +508,7 @@ class MainRunner:
             await asyncio.sleep(self._polling_delay_sec)
 
     async def _apply_callbacks(self, event_bundle: schemas.ApiEventBundle, callbacks: dict[str, set[EventCallback]]) -> schemas.ApiEventBundle:
+        # TODO: FIXME
         passthrough_events = schemas.ApiEventBundle()
         for event_type, events in event_bundle.events.items():
             if event_type not in callbacks:
@@ -520,6 +525,7 @@ class MainRunner:
         return passthrough_events
 
     async def _handle_fragment_runner_events(self):
+        # TODO: FIXME
         while True:
             event = await self.fragment_runner_events.get()
             read_events = None
@@ -550,6 +556,7 @@ class MainRunner:
     async def _read_fragment_runner_events(self, fragment_runner: FragmentRunner):
         try:
             while True:
+                # TODO: FIXME
                 (event_type, events) = await fragment_runner.fragment_runner.get_events()
                 await self.fragment_runner_events.put(
                     FragmentRunnerEvent(fragment_runner, event_type, events)

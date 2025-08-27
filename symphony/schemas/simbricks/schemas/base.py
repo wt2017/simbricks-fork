@@ -403,8 +403,8 @@ def parse_events(events: list[dict]) -> list[Event]:
     return res
 
 
-def dump_events(events: list[Event]) -> list[dict[str, any]]:
-    return [m.model_dump() for m in events]
+def dump_events(events: list[Event], exclude_none: bool = True) -> list[dict[str, any]]:
+    return [m.model_dump(exclude_none=exclude_none) for m in events]
 
 
 Model_Class_T = TypeVar("Model_Class_T")

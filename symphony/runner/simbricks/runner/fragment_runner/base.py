@@ -83,6 +83,7 @@ class RunnerSimulationExecutorCallbacks(sim_exec.SimulationExecutorCallbacks):
     async def _send_out_simulator_events(
         self, simulator_id: int, lines: list[str], stderr: bool
     ) -> None:
+        # TODO: FIXME
         event_bundle = schemas.ApiEventBundle[schemas.ApiSimulatorOutputEventCreate]()
         for line in lines:
             event = schemas.ApiSimulatorOutputEventCreate(
@@ -159,6 +160,7 @@ class RunnerSimulationExecutorCallbacks(sim_exec.SimulationExecutorCallbacks):
         proxy_port: int,
         proxy_cmd: str | None = None,
     ) -> None:
+        # TODO: FIXME
         event = schemas.ApiProxyStateChangeEventCreate(
             run_id=self._run_id,
             proxy_name=proxy_name,
@@ -174,6 +176,7 @@ class RunnerSimulationExecutorCallbacks(sim_exec.SimulationExecutorCallbacks):
         await self._send_queue.put((schemas.ApiEventType.ApiEventCreate, event_bundle))
 
     async def _send_out_proxy_events(self, proxy_id: int, lines: list[str], stderr: bool) -> None:
+        # TODO: FIXME
         event_bundle = schemas.ApiEventBundle[schemas.ApiProxyOutputEventCreate]()
         for line in lines:
             event = schemas.ApiProxyOutputEventCreate(
@@ -287,9 +290,11 @@ class FragmentRunner(abc.ABC):
     async def send_events(
         self, events: schemas.ApiEventBundle, event_type: schemas.ApiEventType
     ) -> None:
+        # TODO: FIXME
         await runner_utils.send_events(self.write, events, event_type)
 
     async def get_events(self) -> tuple[schemas.ApiEventType, schemas.ApiEventBundle]:
+        # TODO: FIXME
         return await runner_utils.get_events(self.read)
     
     async def _assemble_inst(
@@ -361,6 +366,7 @@ class FragmentRunner(abc.ABC):
         try:
             LOGGER.info(f"start run {run.run_id}")
 
+            # TODO: FIXME
             event = schemas.ApiRunFragmentStateEventCreate(
                 run_id=run.run_id,
                 run_fragment_id=run.run_fragment.id,
@@ -456,6 +462,7 @@ class FragmentRunner(abc.ABC):
         events: list[schemas.ApiRunEventRead],
         updates: schemas.ApiEventBundle[schemas.ApiEventUpdate_U],
     ) -> None:
+        # TODO: FIXME
         events = schemas.validate_list_type(events, schemas.ApiRunEventRead)
         for event in events:
             update = schemas.ApiRunEventUpdate(
@@ -523,6 +530,7 @@ class FragmentRunner(abc.ABC):
     async def _handle_proxy_ready_run_events(
         self, events: list[schemas.ApiProxyStateChangeEventRead]
     ) -> None:
+        # TODO: FIXME
         for event in events:
             # TODO: FIXME proxy related events are currently not stored in the db, hence there is no
             # point in updating an event itself. NOTE however that events are send to the backend in
@@ -555,6 +563,7 @@ class FragmentRunner(abc.ABC):
             LOGGER.debug(f"marked simulator {event.simulator_id} as terminated")
 
     async def _handle_events(self) -> None:
+        # TODO: FIXME
         while True:
             event_type, event_bundle = await self.get_events()
 
@@ -588,6 +597,8 @@ class FragmentRunner(abc.ABC):
 
     async def _worker_loop(self):
         while True:
+            # TODO: FIXME
+
             # fetch all events not handled yet
             event_query_bundle = schemas.ApiEventBundle[schemas.ApiEventQuery_U]()
 
@@ -624,6 +635,7 @@ class FragmentRunner(abc.ABC):
 
     async def _send_loop(self):
         while True:
+            # TODO: FIXME
             event_type, event_bundle = await self._send_event_queue.get()
             await self.send_events(event_bundle, event_type)
 

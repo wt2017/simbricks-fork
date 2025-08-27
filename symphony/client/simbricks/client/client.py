@@ -25,6 +25,9 @@ import aiohttp
 import typing
 import contextlib
 import json
+import warnings
+import typing_extensions
+
 from .auth import Token, TokenProvider
 from .settings import client_settings
 from simbricks.orchestration import system
@@ -784,19 +787,40 @@ class RunnerClient:
     GENERIC EVENT HANDLING INTERFACE
     """
 
+    async def send_events(self, events: list[schemas.Event]) -> None:
+        async with self.post(
+            url="/api/events/send", json=schemas.dump_events(events, exclude_none=True)
+        ) as _:
+            pass
+
+    async def retrieve_events(
+        self, runner_id: int, wait_sec: int | None = None, limit: int = 100, offset: int = 0
+    ) -> list[schemas.Event]:
+        params = {"runner_id": runner_id, "limit": limit, "offset": offset}
+        if wait_sec:
+            params["wait_sec"] = wait_sec
+
+        async with self.get(url="/api/events/retrieve", params=params) as resp:
+            raw_json = await resp.json()
+            return schemas.parse_events(raw_json)
+
+    @typing_extensions.deprecated("Will change interface")
     async def create_events(
         self, event_bundle: schemas.ApiEventBundle[schemas.ApiEventCreate_U]
     ) -> schemas.ApiEventBundle[schemas.ApiEventRead_U]:
         to_create = schemas.ApiEventBundle[schemas.ApiEventCreate_U].model_validate(event_bundle)
+        warnings.warn("Deprecated: Will change interface")
         async with self.post(
             url="/api/events", json=to_create.model_dump(exclude_none=True)
         ) as resp:
             raw_json = await resp.json()
             return schemas.ApiEventBundle[schemas.ApiEventRead_U].model_validate(raw_json)
 
+    @typing_extensions.deprecated("Will change interface")
     async def fetch_events(
         self, to_fetch: schemas.ApiEventBundle[schemas.ApiEventQuery_U]
     ) -> schemas.ApiEventBundle[schemas.ApiEventRead_U]:
+        warnings.warn("Deprecated: Will change interface")
         query = schemas.ApiEventBundle[schemas.ApiEventQuery_U].model_validate(to_fetch)
         async with self.post(
             url="/api/events/fetch", json=query.model_dump(exclude_none=True)
@@ -804,9 +828,11 @@ class RunnerClient:
             raw_json = await resp.json()
             return schemas.ApiEventBundle[schemas.ApiEventRead_U].model_validate(raw_json)
 
+    @typing_extensions.deprecated("Will remove interface to update events itself from API")
     async def update_events(
         self, event_bundle: schemas.ApiEventBundle[schemas.ApiEventUpdate_U]
     ) -> schemas.ApiEventBundle[schemas.ApiEventRead_U]:
+        warnings.warn("Deprecated: Will remove interface to update events itself from API")
         to_update = schemas.ApiEventBundle[schemas.ApiEventUpdate_U].model_validate(event_bundle)
         async with self.patch(
             url="/api/events", json=to_update.model_dump(exclude_none=True)
@@ -814,9 +840,11 @@ class RunnerClient:
             raw_json = await resp.json()
             return schemas.ApiEventBundle[schemas.ApiEventRead_U].model_validate(raw_json)
 
+    @typing_extensions.deprecated("Will change interface")
     async def delete_events(
         self, event_bundle: schemas.ApiEventBundle[schemas.ApiEventDelete_U]
     ) -> None:
+        warnings.warn("Deprecated: Will change interface")
         to_delete = schemas.ApiEventBundle[schemas.ApiEventDelete_U].model_validate(event_bundle)
         async with self.delete(
             url="/api/events", json=to_delete.model_dump(exclude_none=True)

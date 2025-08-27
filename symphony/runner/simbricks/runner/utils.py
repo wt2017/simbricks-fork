@@ -6,6 +6,7 @@ async def send_events(
     events: schemas.ApiEventBundle,
     event_type: schemas.ApiEventType,
 ) -> None:
+    # TODO: FIXME
     events_json = events.model_dump_json()
     payload = bytes(f"{event_type.value},{events_json}", encoding="utf-8")
     data = bytes(f"{len(payload):12x}", encoding="utf-8") + payload
@@ -24,6 +25,7 @@ async def _read_all(read: abc.Callable[[int], abc.Awaitable[bytes]], length: int
 async def get_events(
         read: abc.Callable[[int], abc.Awaitable[bytes]]
 ) -> tuple[schemas.ApiEventType, schemas.ApiEventBundle]:
+    # TODO: FIXME
     length_str = (await _read_all(read, 12)).decode("utf-8")
     length = int(length_str, 16)
     payload = (await _read_all(read, length)).decode("utf-8")

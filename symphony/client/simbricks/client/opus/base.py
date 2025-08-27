@@ -27,6 +27,9 @@ import random
 import typing
 import pydantic
 
+import warnings
+import typing_extensions
+
 import rich
 import rich.color
 import rich.style
@@ -184,23 +187,29 @@ async def create_run(instantiation: instantiation.Instantiation) -> int:
 T = typing.TypeVar("T")
 
 
+@typing_extensions.deprecated("Will change interface to new, simpler version")
 async def create_event(rc: client.RunnerClient, event: schemas.ApiEventCreate_U) -> None:
+    warnings.warn("Deprecated: Will change interface to new, simpler version")
     create_bundle = schemas.ApiEventBundle[schemas.ApiEventCreate_U]()
     create_bundle.add_event(event)
 
     await rc.create_events(create_bundle)
 
 
+@typing_extensions.deprecated("Will remove interface to update events itself from API")
 async def update_event(rc: client.RunnerClient, event: schemas.ApiEventUpdate_U) -> None:
+    warnings.warn("Deprecated: We will remove interface to update events itself from API")
     update_bundle = schemas.ApiEventBundle[schemas.ApiEventUpdate_U]()
     update_bundle.add_event(event)
 
     await rc.update_events(update_bundle)
 
 
+@typing_extensions.deprecated("Will change interface to new, simpler version")
 async def fetch_events(
     rc: client.RunnerClient, query: schemas.ApiEventQuery_U, expected: T
 ) -> list[T]:
+    warnings.warn("Deprecated: Will change interface to new, simpler version")
     query_bundle = schemas.ApiEventBundle[schemas.ApiEventQuery_U]()
     query_bundle.add_event(query)
 

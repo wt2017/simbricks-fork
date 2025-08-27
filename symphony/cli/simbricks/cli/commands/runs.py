@@ -192,6 +192,7 @@ async def create_event(
 ):
     """Send a heartbeat event to a runner."""
 
+    # TODO: FIXME
     to_create = schemas.ApiRunEventCreate(
         runner_id=runner_id,
         run_id=run_id,
@@ -298,6 +299,7 @@ async def ls_events(
         query.limit = limit
 
     rc = client_provider.runner_client(runner_id)
+    # TODO: FIXME
     events = await opus_base.fetch_events(rc, query, schemas.ApiRunEventRead)
 
     print_table_generic(
