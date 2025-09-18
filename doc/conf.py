@@ -22,7 +22,7 @@ from external_links import *
 # -- Project information -----------------------------------------------------
 
 project = 'SimBricks'
-copyright = '2022 Max Planck Institute for Software Systems, ' + \
+copyright = '2025 Max Planck Institute for Software Systems, ' + \
         'and National University of Singapore'
 
 author = 'Antoine Kaufmann'
