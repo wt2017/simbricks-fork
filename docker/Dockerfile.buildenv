@@ -1,6 +1,5 @@
-ARG REGISTRY=
-ARG TAG=:latest
-FROM ubuntu:jammy
+
+FROM localhost/ubuntu:22.04
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
     TZ=Europe/Berlin \
@@ -48,9 +47,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
-RUN cd /tmp \
- && git clone https://github.com/apache/thrift.git \
- && cd thrift \
+COPY thrift /tmp/thrift
+RUN cd /tmp/thrift \
  && git switch 0.22.0 \
  && ./bootstrap.sh \
  && ./configure \

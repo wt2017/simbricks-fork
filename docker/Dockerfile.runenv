@@ -1,6 +1,4 @@
-ARG REGISTRY=
-ARG TAG=:latest
-FROM ubuntu:jammy
+FROM localhost/ubuntu:22.04
 RUN apt-get update \
  && apt-get install -y \
 	make \
