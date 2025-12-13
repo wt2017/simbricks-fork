@@ -205,17 +205,28 @@ class Gem5Sim(HostSim):
         if inst.restore_checkpoint:
             cmd += "-r 1 "
 
-        latency, sync_period, run_sync = (
-            sim_base.Simulator.get_unique_latency_period_sync(
-                channels=self.get_channels()
-            )
-        )
-
         fsh_interfaces = host_spec.interfaces()
 
+        # Only calculate latency/sync parameters if there are actual interfaces
         pci_interfaces = system.Interface.filter_by_type(
             interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
         )
+        mem_interfaces = system.Interface.filter_by_type(
+            interfaces=fsh_interfaces, ty=sys_mem.MemHostInterface
+        )
+        
+        # Only determine latency/sync if there are interfaces that need them
+        if pci_interfaces or mem_interfaces:
+            latency, sync_period, run_sync = (
+                sim_base.Simulator.get_unique_latency_period_sync(
+                    channels=self.get_channels()
+                )
+            )
+        else:
+            # No interfaces means no external communication needed
+            latency = sync_period = run_sync = None
+            print(f"DEBUG: No PCI or memory interfaces found, skipping latency/sync parameters")
+
         for inf in pci_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:
@@ -230,9 +241,6 @@ class Gem5Sim(HostSim):
                 cmd += ":sync"
             cmd += " "
 
-        mem_interfaces = system.Interface.filter_by_type(
-            interfaces=fsh_interfaces, ty=sys_mem.MemHostInterface
-        )
         for inf in mem_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:
@@ -339,10 +347,29 @@ class QemuSim(HostSim):
         return ["poweroff -f"]
 
     def run_cmd(self, inst: inst_base.Instantiation) -> str:
-
-        latency, period, sync = sim_base.Simulator.get_unique_latency_period_sync(
-            channels=self.get_channels()
+        print(f"DEBUG: QemuSim.run_cmd() called for simulator {self.name}")
+        
+        full_sys_hosts = self.filter_components_by_type(ty=sys_host.BaseLinuxHost)
+        if len(full_sys_hosts) != 1:
+            raise Exception("QEMU only supports simulating 1 FullSystemHost")
+        host_spec = full_sys_hosts[0]
+        
+        # Only calculate latency/sync parameters if there are actual interfaces
+        fsh_interfaces = host_spec.interfaces()
+        pci_interfaces = system.Interface.filter_by_type(
+            interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
         )
+        
+        # Only determine latency/sync if there are interfaces that need them
+        if pci_interfaces:
+            latency, period, sync = sim_base.Simulator.get_unique_latency_period_sync(
+                channels=self.get_channels()
+            )
+        else:
+            # No interfaces means no external communication needed
+            latency = period = sync = None
+            print(f"DEBUG: No PCI interfaces found, skipping latency/sync parameters")
+
         accel = ",accel=kvm:tcg" if not sync else ""
 
         cmd = (
@@ -350,11 +377,6 @@ class QemuSim(HostSim):
             "-cpu Skylake-Server -display none -nic none "
             f"-kernel {inst.env.repo_base('images/bzImage')} "
         )
-
-        full_sys_hosts = self.filter_components_by_type(ty=sys_host.BaseLinuxHost)
-        if len(full_sys_hosts) != 1:
-            raise Exception("QEMU only supports simulating 1 FullSystemHost")
-        host_spec = full_sys_hosts[0]
 
         kcmd_append = ""
         if host_spec.kcmd_append is not None:
@@ -383,10 +405,6 @@ class QemuSim(HostSim):
 
             cmd += f" -icount shift={shift},sleep=off "
 
-        fsh_interfaces = host_spec.interfaces()
-        pci_interfaces = system.Interface.filter_by_type(
-            interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
-        )
         for inf in pci_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:

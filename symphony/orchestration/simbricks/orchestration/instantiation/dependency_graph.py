@@ -158,7 +158,9 @@ def build_simulation_dependency_graph(
         print(f"DEBUG: Processing simulator: {sim_a.full_name()}")
         for comp_a in sim_a.components():
             print(f"DEBUG: Processing component: {comp_a}")
-            for inf_a in comp_a.interfaces():
+            interfaces = list(comp_a.interfaces())
+            print(f"DEBUG: Component has {len(interfaces)} interfaces: {interfaces}")
+            for inf_a in interfaces:
                 print(f"DEBUG: Processing interface: {inf_a}")
                 # both interfaces of channel are located in the same simulator => no dependency
                 if inst._opposing_interface_within_same_sim(interface=inf_a):
@@ -197,6 +199,21 @@ def build_simulation_dependency_graph(
     print(f"DEBUG: Finished simulator-simulator dependency processing")
     print(f"DEBUG: Current nodes_sim: {list(nodes_sim.keys())}")
     print(f"DEBUG: Current dep_graph keys: {list(dep_graph.keys())}")
+    
+    # CRITICAL FIX: Add simulators with no interfaces to the dependency graph
+    # This ensures that simulators like Gem5 in host-only configurations still get executed
+    print(f"DEBUG: Checking for simulators with no interfaces...")
+    for sim_a in simulators_in_fragment:
+        if sim_a not in nodes_sim:
+            print(f"DEBUG: Adding simulator with no interfaces: {sim_a.full_name()}")
+            node_a = SimulationDependencyNode(SimulationDependencyNodeType.SIMULATOR, sim_a)
+            nodes_sim[sim_a] = node_a
+            # Add to dependency graph with no dependencies (empty set)
+            dep_graph[node_a] = set()
+            print(f"DEBUG: Added standalone simulator node: {node_a}")
+    
+    print(f"DEBUG: Final nodes_sim: {list(nodes_sim.keys())}")
+    print(f"DEBUG: Final dep_graph keys: {list(dep_graph.keys())}")
 
     # optimization: remove proxies that we do not need
     inst.assigned_fragment._remove_unnecessary_proxies(inst)
