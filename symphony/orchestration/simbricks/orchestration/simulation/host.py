@@ -160,6 +160,9 @@ class Gem5Sim(HostSim):
         return ["m5 exit"]
 
     def run_cmd(self, inst: inst_base.Instantiation) -> str:
+        print(f"DEBUG: Gem5Sim.run_cmd() called for simulator {self.name}")
+        print(f"DEBUG: Instantiation: {inst.simulation.name}")
+        
         cpu_type = self.cpu_type
         if inst.create_checkpoint:
             cpu_type = self.cpu_type_cp
@@ -168,6 +171,8 @@ class Gem5Sim(HostSim):
         if len(full_sys_hosts) != 1:
             raise Exception("Gem5Sim only supports simulating 1 FullSystemHost")
         host_spec = full_sys_hosts[0]
+        
+        print(f"DEBUG: Found host: {host_spec.name}")
 
         cmd = f"{inst.env.repo_base(f'{self._executable}.{self._variant}')} --outdir={inst.env.get_simulator_output_dir(sim=self)} "
         cmd += " ".join(self.extra_main_args)
@@ -260,6 +265,7 @@ class Gem5Sim(HostSim):
 
         cmd += " ".join(self.extra_config_args)
 
+        print(f"DEBUG: Final Gem5 command: {cmd}")
         return cmd
 
 

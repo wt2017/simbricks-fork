@@ -139,6 +139,10 @@ def build_simulation_dependency_graph(
     Build a dependency graph for the simulator and proxy starting order. The listening side of a
     SimBricks connection has to be started first since it creates the SHM queue.
     """
+    print(f"DEBUG: build_simulation_dependency_graph called")
+    print(f"DEBUG: Assigned fragment: {inst.assigned_fragment}")
+    print(f"DEBUG: Assigned fragment simulators: {list(inst.assigned_fragment.all_simulators()) if inst.assigned_fragment else 'None'}")
+    
     # the actual dependency graph
     dep_graph: SimulationDependencyGraph = SimulationDependencyGraph({})
     # lookup dicts from components that should be started to their corresponding graph nodes
@@ -146,24 +150,35 @@ def build_simulation_dependency_graph(
     nodes_proxy: dict[inst_proxy.Proxy, SimulationDependencyNode] = {}
 
     # add simulator-simulator dependencies for simulators in assigned fragment
-    for sim_a in inst.assigned_fragment.all_simulators():
+    print(f"DEBUG: Starting simulator-simulator dependency processing")
+    simulators_in_fragment = list(inst.assigned_fragment.all_simulators())
+    print(f"DEBUG: Found {len(simulators_in_fragment)} simulators in assigned fragment")
+    
+    for sim_a in simulators_in_fragment:
+        print(f"DEBUG: Processing simulator: {sim_a.full_name()}")
         for comp_a in sim_a.components():
+            print(f"DEBUG: Processing component: {comp_a}")
             for inf_a in comp_a.interfaces():
+                print(f"DEBUG: Processing interface: {inf_a}")
                 # both interfaces of channel are located in the same simulator => no dependency
                 if inst._opposing_interface_within_same_sim(interface=inf_a):
+                    print(f"DEBUG: Same simulator interface, skipping")
                     continue
 
                 # get info on other side of channel
                 inf_b = inf_a.get_opposing_interface()
                 sim_b = inst.find_sim_by_interface(inf_b)
+                print(f"DEBUG: Opposing interface: {inf_b}, simulator: {sim_b.full_name() if sim_b else 'None'}")
 
                 # other simulator is not part of current fragment, will handle this case later via
                 # simulator-proxy dependencies
                 if sim_b not in inst.assigned_fragment.all_simulators():
+                    print(f"DEBUG: Opposing simulator not in current fragment")
                     if sim_a not in nodes_sim:
                         nodes_sim[sim_a] = (
                             SimulationDependencyNode(SimulationDependencyNodeType.SIMULATOR, sim_a)
                         )
+                        print(f"DEBUG: Added node for simulator: {sim_a.full_name()}")
                     continue
 
                 # get / create nodes
@@ -175,8 +190,13 @@ def build_simulation_dependency_graph(
                     sim_b,
                     SimulationDependencyNode(SimulationDependencyNodeType.SIMULATOR, sim_b),
                 )
+                print(f"DEBUG: Created/retrieved nodes: {node_a}, {node_b}")
                 _insert_dep_if_a_depends_on_b(dep_graph, inst, inf_a, node_a, inf_b, node_b)
                 _insert_dep_if_a_depends_on_b(dep_graph, inst, inf_b, node_b, inf_a, node_a)
+    
+    print(f"DEBUG: Finished simulator-simulator dependency processing")
+    print(f"DEBUG: Current nodes_sim: {list(nodes_sim.keys())}")
+    print(f"DEBUG: Current dep_graph keys: {list(dep_graph.keys())}")
 
     # optimization: remove proxies that we do not need
     inst.assigned_fragment._remove_unnecessary_proxies(inst)

@@ -267,8 +267,10 @@ class SimulationExecutor:
 
         starting: list[asyncio.Task] = []
         try:
+            print(f"DEBUG: SimulationExecutor.run() starting for {self._instantiation.simulation.name}")
             await self._callbacks.simulation_started()
             graph = self._instantiation.sim_dependencies()
+            print(f"DEBUG: Dependency graph created with {len(graph)} nodes")
 
             # add a ProxyReadyInfo mapping for each external proxy in the graph
             for node in graph:
@@ -280,15 +282,25 @@ class SimulationExecutor:
 
             ts = graphlib.TopologicalSorter(graph)
             ts.prepare()
+            print(f"DEBUG: TopologicalSorter prepared, starting dependency resolution")
+            iteration = 0
             while ts.is_active():
+                iteration += 1
+                print(f"DEBUG: Dependency resolution iteration {iteration}")
                 # start ready simulators in parallel
                 topo_comps = []
-                for comp in ts.get_ready():
+                ready_comps = ts.get_ready()
+                print(f"DEBUG: Found {len(ready_comps)} ready components")
+                
+                for comp in ready_comps:
                     comp: dep_graph.SimulationDependencyNode
+                    print(f"DEBUG: Processing component: {comp.type}")
                     match comp.type:
                         case dep_graph.SimulationDependencyNodeType.SIMULATOR:
+                            sim = comp.get_simulator()
+                            print(f"DEBUG: Starting simulator: {sim.full_name()}")
                             starting.append(
-                                asyncio.create_task(self._start_sim(comp.get_simulator()))
+                                asyncio.create_task(self._start_sim(sim))
                             )
                             topo_comps.append(comp)
                         case dep_graph.SimulationDependencyNodeType.PROXY:
@@ -307,13 +319,16 @@ class SimulationExecutor:
                             raise RuntimeError("Unhandled topology component type")
 
                 # wait for starts to complete
+                print(f"DEBUG: Waiting for {len(starting)} tasks to complete")
                 await asyncio.gather(*starting)
+                print(f"DEBUG: Tasks completed")
 
                 for comp in topo_comps:
                     ts.done(comp)
 
                 # could happen when blocked by waiting for external proxy to start
                 if not topo_comps:
+                    print(f"DEBUG: No ready components, sleeping...")
                     await asyncio.sleep(3)
 
             if self._profile_int:
