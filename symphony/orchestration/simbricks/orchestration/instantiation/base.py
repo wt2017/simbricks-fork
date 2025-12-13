@@ -456,13 +456,17 @@ class Instantiation(utils_base.IdObj):
         await self.simulation.prepare(inst=self)
 
     async def cleanup(self) -> None:
+        print(f"DEBUG: Instantiation.cleanup() called, preserve_tmp_folder={self.preserve_tmp_folder}")
         if self.preserve_tmp_folder:
             return
         to_delete = [self.env.shm_base(), self.env.img_dir()]
+        print(f"DEBUG: About to delete: {to_delete}")
         if not self._preserve_checkpoints:
             to_delete.append(self.env.cp_dir())
         for td in to_delete:
+            print(f"DEBUG: Deleting directory: {td}")
             utils_file.rmtree(td)
+            print(f"DEBUG: Deleted directory: {td}")
 
     def find_sim_by_interface(self, interface: sys_base.Interface) -> sim_base.Simulator:
         return self.find_sim_by_spec(spec=interface.component)

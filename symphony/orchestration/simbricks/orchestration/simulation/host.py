@@ -75,17 +75,38 @@ class HostSim(sim_base.Simulator):
     async def prepare(self, inst: inst_base.Instantiation):
         await super().prepare(inst)
 
+        print(f"DEBUG: HostSim.prepare() called for simulator {self.name}")
+
         full_sys_hosts = self.filter_components_by_type(ty=sys_host.FullSystemHost)
+        print(f"DEBUG: Found {len(full_sys_hosts)} FullSystemHost(s)")
 
         for host in full_sys_hosts:
+            print(f"DEBUG: Processing host: {host.name} (ID: {host.id()})")
+            print(f"DEBUG: Host has {len(host.disks)} disk(s)")
+            
             host_disks = []
             for i, disk in enumerate(host.disks):
+                disk_format = disk.find_format(self)
+                needs_copy = disk.needs_copy
+                
+                print(f"DEBUG: Disk {i}:")
+                print(f"DEBUG:   - Disk object: {disk}")
+                print(f"DEBUG:   - Needs copy: {needs_copy}")
+                print(f"DEBUG:   - Format: {disk_format}")
+                
                 if disk.needs_copy:
                     copy_path = await self.copy_disk_image(inst, disk, f"{host.id()}.{i}")
+                    print(f"DEBUG:   - Copy path: {copy_path}")
                     host_disks.append((disk, copy_path))
                 else:
-                    host_disks.append((disk, disk.path(inst, disk.find_format(self))))
+                    original_path = disk.path(inst, disk.find_format(self))
+                    print(f"DEBUG:   - Original path: {original_path}")
+                    host_disks.append((disk, original_path))
+            
             self._disk_images[host] = host_disks
+            print(f"DEBUG: Finished processing host {host.name}, stored {len(host_disks)} disk entries")
+        
+        print("DEBUG: HostSim.prepare() completed")
 
     def supported_socket_types(
         self, interface: system.Interface
@@ -187,6 +208,20 @@ class Gem5Sim(HostSim):
         )
 
         assert host_spec in self._disk_images
+
+        # Validate disk image files exist before proceeding
+        print(f"DEBUG: Validating disk image files for Gem5Sim...")
+        for i, disk in enumerate(self._disk_images[host_spec]):
+            disk_path = disk[1]
+            print(f"DEBUG: Checking disk {i}: {disk_path}")
+            if not pathlib.Path(disk_path).exists():
+                print(f"DEBUG: ERROR - Disk file does not exist: {disk_path}")
+                raise RuntimeError(f"Gem5Sim disk image file not found: {disk_path}")
+            else:
+                print(f"DEBUG: Disk file exists: {disk_path}")
+                file_size = pathlib.Path(disk_path).stat().st_size
+                print(f"DEBUG: Disk file size: {file_size} bytes")
+
         for disk in self._disk_images[host_spec]:
             cmd += f"--disk-image={disk[1]} "
 
@@ -205,17 +240,30 @@ class Gem5Sim(HostSim):
         if inst.restore_checkpoint:
             cmd += "-r 1 "
 
-        latency, sync_period, run_sync = (
-            sim_base.Simulator.get_unique_latency_period_sync(
-                channels=self.get_channels()
-            )
-        )
-
         fsh_interfaces = host_spec.interfaces()
 
+        # Only calculate latency/sync parameters if there are actual interfaces
         pci_interfaces = system.Interface.filter_by_type(
             interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
         )
+        mem_interfaces = system.Interface.filter_by_type(
+            interfaces=fsh_interfaces, ty=sys_mem.MemHostInterface
+        )
+        
+        # Only determine latency/sync if there are interfaces that need them
+        print(f"DEBUG: pci_interfaces count: {len(pci_interfaces)}, mem_interfaces count: {len(mem_interfaces)}, channels count: {len(self.get_channels())}")
+        if pci_interfaces or mem_interfaces or self.get_channels():
+            latency, sync_period, run_sync = (
+                sim_base.Simulator.get_unique_latency_period_sync(
+                    channels=self.get_channels()
+                )
+            )
+            print(f"DEBUG: Calculated latency={latency}, sync_period={sync_period}, run_sync={run_sync}")
+        else:
+            # No interfaces means no external communication needed
+            latency = sync_period = run_sync = None
+            print(f"DEBUG: No PCI or memory interfaces found, skipping latency/sync parameters")
+
         for inf in pci_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:
@@ -230,9 +278,6 @@ class Gem5Sim(HostSim):
                 cmd += ":sync"
             cmd += " "
 
-        mem_interfaces = system.Interface.filter_by_type(
-            interfaces=fsh_interfaces, ty=sys_mem.MemHostInterface
-        )
         for inf in mem_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:
@@ -249,6 +294,36 @@ class Gem5Sim(HostSim):
             if run_sync and not inst.create_checkpoint:
                 cmd += ":sync"
             cmd += " "
+
+        # Handle MemSimpleDevice components in this simulator (like memory proxy)
+        mem_devices = self.filter_components_by_type(ty=sys_mem.MemSimpleDevice)
+        print(f"DEBUG: Found {len(mem_devices)} MemSimpleDevice(s) in this simulator")
+        for dev in mem_devices:
+            # Skip if this device was already processed via a MemHostInterface
+            # (though unlikely in this context, we check)
+            if any(inf.component is dev for inf in mem_interfaces):
+                print(f"DEBUG: Device {dev.name} (id={dev.id()}) already processed via MemHostInterface, skipping")
+                continue
+            # Get the MemDeviceInterface of the device
+            mem_if = dev._mem_if
+            print(f"DEBUG: Processing device {dev.name} (id={dev.id()}), addr={dev._addr}, size={dev._size}, as_id={dev._as_id}")
+            print(f"DEBUG: MemDeviceInterface id: {mem_if.id()}")
+            socket = inst.get_socket(interface=mem_if)
+            if socket is None:
+                print(f"DEBUG: No socket found for MemDeviceInterface {mem_if.id()}")
+                continue
+            print(f"DEBUG: Found socket: path={socket._path}, type={socket._type}")
+            assert socket._type == inst_socket.SockType.CONNECT
+            cmd += (
+                f"--simbricks-mem={dev._size}@{dev._addr}@{dev._as_id}@"
+                f"connect:{socket._path}"
+                f":latency={latency}ns"
+                f":sync_interval={sync_period}ns"
+            )
+            if run_sync and not inst.create_checkpoint:
+                cmd += ":sync"
+            cmd += " "
+            print(f"DEBUG: Added --simbricks-mem flag for device {dev.name}")
 
         # TODO: FIXME
         # for net in self.net_directs:
@@ -339,10 +414,29 @@ class QemuSim(HostSim):
         return ["poweroff -f"]
 
     def run_cmd(self, inst: inst_base.Instantiation) -> str:
-
-        latency, period, sync = sim_base.Simulator.get_unique_latency_period_sync(
-            channels=self.get_channels()
+        print(f"DEBUG: QemuSim.run_cmd() called for simulator {self.name}")
+        
+        full_sys_hosts = self.filter_components_by_type(ty=sys_host.BaseLinuxHost)
+        if len(full_sys_hosts) != 1:
+            raise Exception("QEMU only supports simulating 1 FullSystemHost")
+        host_spec = full_sys_hosts[0]
+        
+        # Only calculate latency/sync parameters if there are actual interfaces
+        fsh_interfaces = host_spec.interfaces()
+        pci_interfaces = system.Interface.filter_by_type(
+            interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
         )
+        
+        # Only determine latency/sync if there are interfaces that need them
+        if pci_interfaces:
+            latency, period, sync = sim_base.Simulator.get_unique_latency_period_sync(
+                channels=self.get_channels()
+            )
+        else:
+            # No interfaces means no external communication needed
+            latency = period = sync = None
+            print(f"DEBUG: No PCI interfaces found, skipping latency/sync parameters")
+
         accel = ",accel=kvm:tcg" if not sync else ""
 
         cmd = (
@@ -350,11 +444,6 @@ class QemuSim(HostSim):
             "-cpu Skylake-Server -display none -nic none "
             f"-kernel {inst.env.repo_base('images/bzImage')} "
         )
-
-        full_sys_hosts = self.filter_components_by_type(ty=sys_host.BaseLinuxHost)
-        if len(full_sys_hosts) != 1:
-            raise Exception("QEMU only supports simulating 1 FullSystemHost")
-        host_spec = full_sys_hosts[0]
 
         kcmd_append = ""
         if host_spec.kcmd_append is not None:
@@ -383,10 +472,6 @@ class QemuSim(HostSim):
 
             cmd += f" -icount shift={shift},sleep=off "
 
-        fsh_interfaces = host_spec.interfaces()
-        pci_interfaces = system.Interface.filter_by_type(
-            interfaces=fsh_interfaces, ty=sys_pcie.PCIeHostInterface
-        )
         for inf in pci_interfaces:
             socket = inst.get_socket(interface=inf)
             if socket is None:

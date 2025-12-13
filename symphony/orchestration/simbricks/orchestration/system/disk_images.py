@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import abc
 import io
+import os
+import shutil
 import pathlib
 import tarfile
 import asyncio
@@ -202,6 +204,7 @@ class LinuxConfigDiskImage(DynamicDiskImage):
 
     async def _prepare_format(self, inst: inst_base.Instantiation, format: str) -> None:
         path = self.path(inst, format)
+        print(f"DEBUG: LinuxConfigDiskImage._prepare_format() creating file at: {path}")
         with tarfile.open(path, "w:") as tar:
             # add main run script
             cfg_i = tarfile.TarInfo("guest/run.sh")
@@ -222,6 +225,24 @@ class LinuxConfigDiskImage(DynamicDiskImage):
                 f.seek(0, io.SEEK_SET)
                 tar.addfile(tarinfo=f_i, fileobj=f)
                 f.close()
+        print(f"DEBUG: LinuxConfigDiskImage._prepare_format() completed, file created at: {path}")
+        if not os.path.exists(path):
+            raise RuntimeError(f"LinuxConfigDiskImage file was not created at: {path}")
+        file_size = os.path.getsize(path)
+        if file_size == 0:
+            raise RuntimeError(f"LinuxConfigDiskImage file is empty at: {path}")
+        print(f"DEBUG: File validation passed - size: {file_size} bytes")
+
+        # Create backup copy for troubleshooting
+        backup_dir = "/simbricks/images/output-shm-rw/"
+        backup_path = os.path.join(backup_dir, os.path.basename(path))
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+            shutil.copy2(path, backup_path)
+            print(f"DEBUG: Backup copy created at: {backup_path}")
+        except Exception as e:
+            print(f"DEBUG: Warning: Could not create backup copy: {e}")
+
 
     def toJSON(self):
         json_obj = super().toJSON()
